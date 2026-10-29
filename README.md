@@ -49,7 +49,7 @@ With a Canadian buyer, three more are added: reading the Pillar 3 report, sortin
 _All files are in `test_data/`._
 
 1. **Canadian buyer crosses into Category III (works well).**
-   - Home → **Example: Canadian buyer** (RBC buying Associated Banc-Corp) → **Use the example report**. Expected: the AI reads RBC's Q3 2026 Pillar 3 (CET1 C$104,956m), and code confirms it (13.49% vs the reported 13.50%).
+   - Home → **Or try an example: Canadian buyer** (RBC buying Associated Banc-Corp) → **Use example** (Pillar 3). Expected: the AI reads RBC's Q3 2026 Pillar 3 (CET1 C$104,956m), and code confirms it (13.49% vs the reported 13.50%).
    - Steps 1–3: RBC's U.S. arm ($204.0bn) plus Associated ($51.4bn) = $255.4bn, so **Category IV → III**. Annual stress tests, the SLR, the countercyclical buffer and fuller liquidity rules newly apply, and all capital ratios are met.
    - Step 4:
      - the IHC and the foreign-bank rules "already apply";
@@ -60,7 +60,7 @@ _All files are in `test_data/`._
      - the OSFI ratios stay above target.
 2. **A smaller Canadian bank crosses $100bn (works well).** Same example, but choose **CIBC** as the Canadian bank. Its U.S. arm ($83.7bn) plus Associated = $135.1bn, so the IHC moves from **below $100bn to Category IV**, and the foreign-bank rules (U.S. risk committee and CRO, liquidity buffer, capital stress testing, home-capital certification) all **newly apply**.
 3. **Where it struggles.**
-   - **Older report layout.** Choose **TD** and use its example report: TD's older 2023 disclosure doesn't use the standard KM1 table, so the AI returns several figures as missing, the code check shows "?", and the user must type them in.
+   - **Older report layout.** Choose **TD** and click **Use example**: TD's older 2023 disclosure doesn't use the standard KM1 table, so the AI returns several figures as missing, the code check shows "?", and the user must type them in.
    - **Limited Fed records.** BMO lists no foreign holdings, so a full Reg K review needs the bank's own subsidiaries list.
    - **Strict checker.** The Q&A checker sometimes marks correct answers "not fully confirmed".
    - **Off-topic question.** Ask "Who won the World Series?": the app declines, because the answer isn't in its regulations.

@@ -106,8 +106,34 @@ div.stButton > button { border-radius:10px; font-weight:600; }
 .gap { height:6px; border-left:2px solid #dfe3ea; margin-left:26px; }
 /* AI answers */
 [class*="st-key-ai_"] { border-left:4px solid var(--ai); background:#f8f6ff; border-radius:10px; padding:14px 18px 6px; margin:6px 0 14px; }
-.ai-tag { display:inline-block; background:var(--ai); color:#fff; font-size:12px; font-weight:700; padding:2px 9px; border-radius:99px; letter-spacing:.03em; }
-.code-tag { display:inline-block; background:var(--green); color:#fff; font-size:12px; font-weight:700; padding:2px 9px; border-radius:99px; letter-spacing:.03em; }
+.ai-tag { display:inline-block; background:#efeafe; color:#5a3fc0; font-size:12.5px; font-weight:600; padding:2px 10px; border-radius:99px; }
+.code-tag { display:inline-block; background:#e7f4ec; color:#1e7d4f; font-size:12.5px; font-weight:600; padding:2px 10px; border-radius:99px; }
+/* force a light look for every control, whatever theme the browser or server uses */
+.stApp button[kind="secondary"], .stApp button[kind="secondaryFormSubmit"], [data-testid="stPopover"] button {
+  background:#ffffff !important; color:var(--ink) !important; border:1px solid #d0d5dd !important; }
+.stApp button[kind="secondary"]:hover, [data-testid="stPopover"] button:hover { border-color:var(--navy) !important; color:var(--navy) !important; }
+.stApp button[kind="secondary"] p, [data-testid="stPopover"] button p { color:inherit !important; }
+.stApp button[kind="primary"], .stApp button[kind="primaryFormSubmit"] { background:var(--navy) !important; border:1px solid var(--navy) !important; }
+.stApp button[kind="tertiary"], .stApp button[kind="tertiary"] p { color:var(--navy) !important; background:transparent !important; text-decoration:underline; }
+[data-baseweb="select"] > div, [data-baseweb="input"], [data-baseweb="input"] input, [data-baseweb="textarea"], textarea,
+[data-testid="stNumberInputContainer"], [data-testid="stNumberInputContainer"] input, [data-testid="stNumberInputContainer"] button {
+  background:#f5f7fa !important; color:var(--ink) !important; border-color:#d0d5dd !important; }
+[data-baseweb="select"] span, [data-baseweb="select"] div { color:var(--ink) !important; }
+[data-baseweb="popover"] ul, [data-baseweb="popover"] li, [data-baseweb="menu"] { background:#ffffff !important; color:var(--ink) !important; }
+[data-testid="stFileUploaderDropzone"] { background:#f5f7fa !important; color:var(--ink) !important; }
+[data-testid="stFileUploaderDropzone"] * { color:var(--ink) !important; }
+/* checkbox ticks and radio dots: navy instead of the default red */
+[data-testid="stCheckbox"] div:has(> svg polyline) { background-color:var(--navy) !important; border-color:var(--navy) !important; }
+[data-testid="stRadioOption"]:has(input:checked) div:has(> div) { background-color:var(--navy) !important; border-color:var(--navy) !important; }
+/* the left-hand step list stays plain text, not boxes */
+.st-key-nav div.stButton > button[kind="secondary"] { background:transparent !important; border:1px solid transparent !important; }
+.st-key-nav div.stButton > button[kind="secondary"]:hover { background:#eceef3 !important; }
+[data-testid="stExpander"] details, [data-testid="stExpander"] summary { background:#ffffff !important; color:var(--ink) !important; }
+[data-testid="stVerticalBlockBorderWrapper"] { background:#ffffff; }
+.howto { display:flex; gap:12px; align-items:flex-start; margin:10px 0; }
+.howto .ic { font-size:20px; line-height:1.4; }
+.howto b { display:block; font-size:16px; }
+.howto span { color:var(--muted); font-size:15px; }
 .diagram { display:flex; flex-direction:column; align-items:center; gap:6px; margin:10px 0 18px; }
 .box { border:2px solid var(--line); border-radius:12px; padding:10px 16px; text-align:center; background:#fff; min-width:230px; }
 .box.can { border-color:#c8102e; } .box.ihc { border-color:var(--navy); background:#f3f6ff; } .box.new { border-color:var(--green); background:#f1faf5; }
@@ -254,7 +280,7 @@ def show_ai(result, title, key):
         if chk:
             note = (f"cites {len(chk['cited'])} regulation passage(s) — all verified" if chk["has_citations"] and not chk["invalid"]
                     else "⚠️ unverified citations were removed" if chk["invalid"] else "no citations")
-        st.markdown(f'<span class="ai-tag">AI</span> <span class="muted">&nbsp;{title}{" · " + note if note else ""}</span>',
+        st.markdown(f'<span class="ai-tag">✨ AI explanation</span> <span class="muted">&nbsp;{title}{" · " + note if note else ""}</span>',
                     unsafe_allow_html=True)
         st.markdown(result["text"])
         if result.get("passages"):
@@ -500,7 +526,7 @@ def page_home():
                 'what the merger changes — and, if the buyer is a Canadian bank, what U.S. regulation it takes on and what that means '
                 'for the holdings it keeps at home.</p>', unsafe_allow_html=True)
     st.write("")
-    left, right = st.columns([0.9, 1.1], gap="large")
+    left, right = st.columns([1.25, 1], gap="large")
     with left:
         st.markdown("### What you'll see")
         for n, title, body in [(1, "At a glance", "Every requirement — met, not met, newly applies."),
@@ -508,20 +534,19 @@ def page_home():
                                (3, "Leverage & liabilities", "The leverage ratio and the 10% liabilities cap."),
                                (4, "Canadian buyer", "The U.S. rules it takes on, Reg K, and the holdings to review."),
                                (5, "Summary & next steps", "A clean table, next steps and a draft memo.")]:
-            st.markdown(f'<div class="step-preview"><div class="num">{n}</div><div><b>{title}</b><br>'
-                        f'<span class="muted">{body}</span></div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="step-preview"><div class="num">{n}</div><div><b style="font-size:17.5px">{title}</b><br>'
+                        f'<span class="muted" style="font-size:15.5px">{body}</span></div></div>', unsafe_allow_html=True)
         st.write("")
-        st.markdown('<span class="code-tag">CODE</span>&nbsp; decides every number and every result. &nbsp;'
-                    '<span class="ai-tag">AI</span>&nbsp; reads and explains, using only the regulations loaded into the app.',
+        st.markdown("### How it works")
+        st.markdown('<div class="howto"><div class="ic">🧮</div><div><b>The numbers are calculated</b>'
+                    '<span>Every figure and every met / not met result follows fixed rules taken from the regulations — '
+                    'the same answer every time.</span></div></div>'
+                    '<div class="howto"><div class="ic">✨</div><div><b>The explanations are written by AI</b>'
+                    '<span>Using only the regulations loaded into the app, with the sources shown so you can check them.</span></div></div>',
                     unsafe_allow_html=True)
     with right:
         st.markdown("### Choose the deal")
-        c1, c2 = st.columns(2)
-        if c1.button("Example: Canadian buyer", type="primary", width="stretch", help="RBC buying Associated Banc-Corp."):
-            load_example("canadian")
-        if c2.button("Example: U.S. buyer", width="stretch", help="Associated Banc-Corp buying WaFd."):
-            load_example("us")
-        with st.popover("Upload FR Y-9C reports", width="stretch"):
+        with st.popover("Upload the banks' FR Y-9C reports", width="stretch"):
             st.markdown("From the Fed's [National Information Center](https://www.ffiec.gov/npw): search the bank → "
                         "**Financial Reports** → **FR Y-9C** (PDF), or the bulk **Financial Data Download** (.txt). Up to four quarters.")
             files = st.file_uploader("FR Y-9C files", type=["txt", "pdf"], accept_multiple_files=True, label_visibility="collapsed")
@@ -529,8 +554,14 @@ def page_home():
                 parse({f.name: f.getvalue() for f in files})
                 if S.get("skipped"):
                     st.warning("Not an FR Y-9C report, so skipped: " + ", ".join(S["skipped"]))
+        c0, c1, c2 = st.columns([1.05, 1.15, 0.8], gap="small")
+        c0.markdown('<div class="muted" style="padding-top:6px">Or try an example:</div>', unsafe_allow_html=True)
+        if c1.button("Canadian buyer", type="tertiary", help="RBC buying Associated Banc-Corp."):
+            load_example("canadian")
+        if c2.button("U.S. buyer", type="tertiary", help="Associated Banc-Corp buying WaFd."):
+            load_example("us")
         if not S.get("banks"):
-            st.markdown('<span class="muted">Start with an example, or upload the Fed\'s FR Y-9C reports.</span>', unsafe_allow_html=True)
+            st.markdown('<span class="muted">Upload the two banks\' reports, or try an example.</span>', unsafe_allow_html=True)
             return
         B = S["banks"]
         arm_ids = {ihc_rssd(k) for k in CANADIAN}
@@ -555,11 +586,11 @@ def page_home():
                 keep("parent_key", pk)
                 add_test_files(US_ARM_FILES.get(pk, []))
                 keep("acq", ihc_rssd(pk))
-                st.markdown(f'<span class="code-tag">CODE</span>&nbsp; Its U.S. arm: <b>{nice_name(STRUCTURE[pk]["ihcs"][0]["name"])}</b> '
+                st.markdown(f'Its U.S. arm: <b>{nice_name(STRUCTURE[pk]["ihcs"][0]["name"])}</b> '
                             f'({E.bn(S["banks"][ihc_rssd(pk)]["latest"]["total_assets"])}, FR Y-9C).', unsafe_allow_html=True)
                 st.markdown("**Its Pillar 3 report** (for its Canadian capital ratios)")
-                c1, c2 = st.columns(2)
-                if pk in PILLAR3 and c1.button("Use the example report", width="stretch", help=PILLAR3[pk][1]):
+                c1, c2 = st.columns([1, 1.4])
+                if pk in PILLAR3 and c1.button("Use example", width="stretch", help=PILLAR3[pk][1]):
                     with open(os.path.join(TEST, PILLAR3[pk][0]), "rb") as fh:
                         read_pillar3(fh.read(), PILLAR3[pk][0])
                 pdf = c2.file_uploader("Pillar 3 PDF", type=["pdf"], label_visibility="collapsed", key="p3_upload")
@@ -569,10 +600,10 @@ def page_home():
                 if v:
                     chk = ai.verify_parent(S["parent"]["fig"])
                     ok = all(c["ok"] for c in chk if c["ok"] is not None) and any(c["ok"] for c in chk)
-                    verdict = "✓ matches the bank's own ratios" if ok else "? some figures missing — check them in Step 4"
-                    st.markdown(f'<span class="ai-tag">AI</span>&nbsp; read {v.get("period") or "the latest quarter"}: CET1 '
+                    verdict = "✓ double-checked against the bank's own ratios" if ok else "? some figures missing — check them in Step 4"
+                    st.markdown(f'<span class="ai-tag">✨ Read by AI</span>&nbsp; {v.get("period") or "Latest quarter"}: CET1 '
                                 f'C${(v.get("cet1") or 0):,.0f}m, total assets C${(v.get("total_assets") or 0):,.0f}m · '
-                                f'<span class="code-tag">CODE</span>&nbsp; {verdict}', unsafe_allow_html=True)
+                                f'<span class="code-tag">{verdict}</span>', unsafe_allow_html=True)
         else:
             buyers = [k for k in targets if k != tgt] or targets
             acq = st.selectbox("Buyer (U.S.)", buyers, format_func=lab, index=buyers.index(saved("acq")) if saved("acq") in buyers else 0)
@@ -641,7 +672,7 @@ def page_capital():
                 f'stress capital buffer, which is at least 2.5% (12 CFR 225.8).</span>', unsafe_allow_html=True)
 
     with st.expander("Where these numbers come from"):
-        st.markdown('<span class="code-tag">CODE</span>&nbsp; read straight from the Fed data and re-checked.', unsafe_allow_html=True)
+        st.markdown('<span class="code-tag">✓ Calculated</span>&nbsp; Read straight from the Fed filings and double-checked.', unsafe_allow_html=True)
         frows = []
         for k in ("cet1", "tier1", "total_capital", "rwa"):
             codes, lbl, loc = E.FIELDS[k]
@@ -726,7 +757,7 @@ def page_canadian():
 
     # ---- A. U.S. footprint ----
     st.markdown("### A. Its U.S. presence, before and after")
-    st.markdown(f'<span class="code-tag">CODE</span>&nbsp; from {ihc_name}\'s FR Y-9C and the Fed\'s ownership records.', unsafe_allow_html=True)
+    st.markdown(f'<span class="muted">From {ihc_name}\'s FR Y-9C and the Fed\'s ownership records.</span>', unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
     for col, lbl, before, after in ((c1, "U.S. subsidiaries (non-branch)", fp_["nonbranch_before"], fp_["nonbranch_after"]),
                                     (c2, "All U.S. operations incl. branches", fp_["combined_before"], fp_["combined_after"])):
@@ -782,8 +813,7 @@ def page_canadian():
     st.markdown("**Outside the U.S.** — businesses that only stay permissible while it keeps Reg K status, or that also reach into the U.S.")
     with st.container(border=True):
         st.markdown("Add the parent's list of subsidiaries (the **principal subsidiaries** page of its annual report, as a PDF, or pasted "
-                    "text). The <span class='ai-tag'>AI</span> reads and sorts each company by business; "
-                    "<span class='code-tag'>CODE</span> applies the Reg K rules.", unsafe_allow_html=True)
+                    "text). AI sorts each company by type of business; the app then applies the Reg K rules to each one.", unsafe_allow_html=True)
         c1, c2 = st.columns(2)
         hpdf = c1.file_uploader("Annual report or subsidiaries list (PDF)", type=["pdf"], key="holdings_pdf")
         htxt = c2.text_area("…or paste the list", height=110, key="holdings_txt", placeholder="Company name — country — business")
@@ -830,15 +860,15 @@ def page_canadian():
     P = S.get("parent")
     if P:
         fig = P["fig"]
-        st.markdown(f'<span class="ai-tag">AI</span>&nbsp; read pages {", ".join(map(str, P["pages"]))} of the Pillar 3 report '
-                    f'(found by <span class="code-tag">CODE</span>). Correct any figure in the table.', unsafe_allow_html=True)
+        st.markdown(f'<span class="ai-tag">✨ Read by AI</span>&nbsp; from pages {", ".join(map(str, P["pages"]))} of the Pillar 3 report. '
+                    f'You can correct any figure in the table.', unsafe_allow_html=True)
         keys = ai.AMOUNT_FIELDS + ("cet1_ratio", "leverage_ratio")
         edit = pd.DataFrame([{"Figure": ai.PARENT_FIELDS[k].split(" (")[0], "C$ millions / %": fig[k]["value"],
                               "Where the AI found it": fig[k]["found_as"]} for k in keys])
         edited = st.data_editor(edit, hide_index=True, width="stretch", disabled=["Figure", "Where the AI found it"], key="parent_editor")
         for k, val in zip(keys, edited["C$ millions / %"]):
             fig[k]["value"] = None if pd.isna(val) else float(val)
-        st.markdown('<span class="code-tag">CODE</span>&nbsp; check: ' + " · ".join(
+        st.markdown('<span class="code-tag">✓ Double-check</span>&nbsp; ' + " · ".join(
             f"{'✓' if c['ok'] else '?' if c['ok'] is None else '✕'} {c['check']} ({c['result']})" for c in ai.verify_parent(fig)),
             unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
