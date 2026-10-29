@@ -209,6 +209,25 @@ CAPITAL_RATIOS = [("cet1_ratio", "CET1 ratio", 4.5), ("tier1_ratio", "Tier 1 rat
 BUFFER = 2.5   # capital conservation buffer, or the minimum stress capital buffer for Category IV+
 
 
+# What each size category must hold for the three risk-based ratios (minimum + the buffer on top).
+# Minimums are the same for every bank (12 CFR 217.10(a)); the buffer grows with the category.
+CATEGORY_CAPITAL = [
+    # (category, who it covers, CET1, Tier 1, Total, the buffer on top of the minimum, source)
+    ("None", "Below $100bn", "7.0%", "8.5%", "10.5%",
+     "Capital conservation buffer of 2.5%", "12 CFR 217.10(a); 217.11(a)"),
+    ("IV", "$100bn – $250bn", "≥ 7.0%", "≥ 8.5%", "≥ 10.5%",
+     "Stress capital buffer, set each year from the Fed's stress test — at least 2.5%", "12 CFR 217.11(a); 12 CFR 225.8"),
+    ("III", "$250bn – $700bn", "≥ 7.0%", "≥ 8.5%", "≥ 10.5%",
+     "Stress capital buffer (at least 2.5%) plus the countercyclical buffer set by the Fed", "12 CFR 217.11(a)–(b); 12 CFR 225.8"),
+    ("II", "$700bn or more", "≥ 7.0%", "≥ 8.5%", "≥ 10.5%",
+     "Stress capital buffer plus countercyclical buffer; ratios must also be met under the 'advanced approaches'",
+     "12 CFR 217.11; 12 CFR 217.100"),
+    ("I", "U.S. GSIBs (the largest, systemically important banks)", "≥ 8.0%", "≥ 9.5%", "≥ 11.5%",
+     "Stress capital buffer plus countercyclical buffer plus a GSIB surcharge of at least 1.0%; advanced approaches",
+     "12 CFR 217.11; 12 CFR 217.403; 12 CFR 217.100"),
+]
+
+
 def judge(value, minimum, with_buffer):
     if value is None:
         return "unknown"
@@ -314,9 +333,15 @@ def qfbo_test(parent_total_assets, us_banking_assets, us_revenue_share=None, us_
                      "detail": f"Outside U.S. {bn(outside)} vs in U.S. {bn(us_banking_assets)}"})
     else:
         legs.append({"measure": "Assets", "us_share": None, "pass": None, "detail": "Need the parent's total assets (Pillar 3)."})
+    asset_share = legs[0]["us_share"]
     for name, share in (("Revenue", us_revenue_share), ("Net income", us_income_share)):
-        legs.append({"measure": name, "us_share": share, "pass": None if share is None else share < 50,
-                     "detail": "Not entered" if share is None else f"{share:.0f}% earned in the U.S."})
+        if share is None and asset_share is not None:
+            # Not entered: estimate from the asset split, and say so. Replace with annual-report figures.
+            legs.append({"measure": name, "us_share": asset_share, "pass": asset_share < 50, "estimated": True,
+                         "detail": f"Estimated at {asset_share:.0f}% (same as the asset split) — enter the annual-report figure to replace"})
+        else:
+            legs.append({"measure": name, "us_share": share, "pass": None if share is None else share < 50,
+                         "detail": "Not entered" if share is None else f"{share:.0f}% earned in the U.S."})
     passes = sum(1 for l in legs if l["pass"] is True)
     fails = sum(1 for l in legs if l["pass"] is False)
     test2 = "met" if passes >= 2 else ("not_met" if fails >= 2 else "unknown")

@@ -34,7 +34,7 @@ CLOSED_WORLD_RULES = (
     "You are an assistant to a U.S./Canadian banking M&A lawyer. Rules you must follow:\n"
     "1. Use ONLY the numbered passages and the APP FACTS provided in this message. Do not use outside "
     "knowledge, do not mention cases, rules or numbers that are not in them.\n"
-    "2. After every sentence that relies on a passage, cite it in square brackets with its ID, e.g. [C41].\n"
+    "2. After every sentence that relies on a passage, cite it in square brackets with its ID, e.g. [C41]. Do not cite the app facts.\n"
     "3. Never do arithmetic and never decide pass/fail yourself - the APP FACTS already contain the "
     "computed numbers and results; repeat them, do not change them.\n"
     "4. If the passages do not answer something, say plainly: 'The loaded regulations do not cover this.'\n"
@@ -106,9 +106,11 @@ def _passages_block(passages):
 
 
 def check_citations(text, passages):
-    """Layer 3 of closed world: every [C#] must be a passage we actually sent."""
+    """Layer 3 of closed world: every passage ID the AI cites - e.g. [C41] or [C41, C63] - must be one we sent."""
     sent = {p["id"] for p in passages}
-    cited = set(re.findall(r"\[(C\d+)\]", text))
+    cited = set()
+    for group in re.findall(r"\[([^\]]*C\d+[^\]]*)\]", text):
+        cited.update(re.findall(r"C\d+", group))
     return {"cited": sorted(cited), "invalid": sorted(cited - sent), "has_citations": bool(cited)}
 
 
@@ -128,9 +130,31 @@ def explain(step, task, facts, query, lib, k=6):
     return {"text": text, "passages": passages, "check": check}
 
 
+def explain_multi(step, task, facts, queries, lib, per_query=2):
+    """Like explain(), but gathers passages topic by topic, so a guide that covers several terms gets the
+    defining text of each one (still closed world). Each item in `queries` is either a search string, or a
+    ("section", cite, phrase) tuple that fetches the exact section that defines the term."""
+    seen, passages = set(), []
+    for q in queries:
+        found = lib.section(q[1], q[2], limit=1) if isinstance(q, tuple) else lib.search(q, k=per_query)
+        for p in found:
+            if p["id"] not in seen and p["score"] >= RELEVANCE_FLOOR:
+                seen.add(p["id"])
+                passages.append(p)
+    if not passages:
+        return {"text": "The loaded regulations do not contain material relevant to this.", "passages": [], "check": None}
+    user = (f"TASK: {task}\n\nAPP FACTS (computed by the app - do not change):\n{facts}\n\n"
+            f"PASSAGES:\n{_passages_block(passages)}")
+    text = chat(CLOSED_WORLD_RULES, user, step, task[:80], passages, max_tokens=1400)
+    check = check_citations(text, passages)
+    if check["invalid"]:
+        text = _strip_invalid(text, check["invalid"])
+    return {"text": text, "passages": passages, "check": check}
+
+
 def _strip_invalid(text, invalid):
     for cid in invalid:
-        text = text.replace(f"[{cid}]", "[citation removed - not in sources]")
+        text = re.sub(rf"\b{cid}\b", "citation removed - not in sources", text)
     return text
 
 

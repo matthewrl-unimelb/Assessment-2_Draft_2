@@ -142,6 +142,7 @@ def main(folder):
                          "parent_type": ENTITY_TYPES.get(ents[prid]["type"], ents[prid]["type"]), "parent_code": ents[prid]["type"],
                          "territory_holdings": sorted([f for f in foreign if f["us_territory"]], key=lambda f: f["name"]),
                          "foreign_total": len([f for f in foreign if not f["us_territory"]]),
+                         "foreign_all": sorted([f for f in foreign if not f["us_territory"]], key=lambda f: f["name"])[:200],
                          "foreign_by_activity": dict(sorted(_count([f["activity"] for f in foreign if not f["us_territory"]]).items(), key=lambda kv: -kv[1])),
                          "foreign_by_country": dict(sorted(_count([f["country"] for f in foreign if not f["us_territory"]]).items(), key=lambda kv: -kv[1])[:8]),
                          "foreign_with_us_business": sorted([f for f in foreign if f["us_business"] and not f["us_territory"]], key=lambda f: f["name"])[:40],

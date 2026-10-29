@@ -42,8 +42,11 @@ with open(os.path.join(HERE, "library", "us_structure.json")) as _fh:
     STRUCTURE = json.load(_fh)   # built once by build_structure.py from the Fed's NIC ownership data
 CANADIAN = list(STRUCTURE)       # TD, RBC, BMO, CIBC
 
-PAGES = ["Home", "1  At a glance", "2  Capital ratios", "3  Leverage & liabilities", "4  Canadian buyer", "5  Summary & next steps"]
-EXTRA = "Size examples"
+PAGE_NAMES = {"home": "Home", "setup": "Getting started", "glance": "At a glance", "capital": "Capital ratios",
+              "leverage": "Leverage & liabilities", "canadian": "Canadian buyer", "summary": "Summary & next steps",
+              "sizes": "Size examples"}
+EXAMPLE_POOL = "EXAMPLE_BANKS_2026Q2.txt"   # fictional banks sized just under the category lines (make_example_banks.py)
+ILLUSTRATIVE_HOLDINGS = "TD_illustrative_subsidiaries.txt"
 
 
 # Streamlit reads "$...$" as maths. Escape dollar signs in plain text (raw HTML blocks are left alone).
@@ -124,7 +127,7 @@ div.stButton > button { border-radius:10px; font-weight:600; }
 [data-testid="stFileUploaderDropzone"] * { color:var(--ink) !important; }
 /* checkbox ticks and radio dots: navy instead of the default red */
 [data-testid="stCheckbox"] div:has(> svg polyline) { background-color:var(--navy) !important; border-color:var(--navy) !important; }
-[data-testid="stRadioOption"]:has(input:checked) div:has(> div) { background-color:var(--navy) !important; border-color:var(--navy) !important; }
+[data-testid="stRadioOption"]:has(input:checked) div:has(> div:only-child:empty) { background-color:var(--navy) !important; border-color:var(--navy) !important; }
 /* the left-hand step list stays plain text, not boxes */
 .st-key-nav div.stButton > button[kind="secondary"] { background:transparent !important; border:1px solid transparent !important; }
 .st-key-nav div.stButton > button[kind="secondary"]:hover { background:#eceef3 !important; }
@@ -154,7 +157,7 @@ def load_library():
 
 LIB = load_library()
 S = st.session_state
-S.setdefault("page", "Home")
+S.setdefault("page", "home")
 S.setdefault("saved", {})
 S.setdefault("ai_cache", {})
 S.setdefault("chat", [])
@@ -176,6 +179,22 @@ def go(page):
 
 def fp(*parts):
     return hashlib.md5(json.dumps(parts, sort_keys=True, default=str).encode()).hexdigest()[:12]
+
+
+def pages():
+    """The steps shown. 'Canadian buyer' only appears when the buyer is a Canadian bank."""
+    return ["home", "setup", "glance", "capital", "leverage"] + (["canadian"] if saved("canadian") else []) + ["summary"]
+
+
+def page_title(pid):
+    order = pages()
+    return PAGE_NAMES[pid] if pid in ("home", "sizes") or pid not in order else f"{order.index(pid)}  {PAGE_NAMES[pid]}"
+
+
+def header(pid):
+    order = pages()
+    n = f"{order.index(pid)} · " if pid in order and pid != "home" else ""
+    st.markdown(f"## {n}{PAGE_NAMES[pid]}")
 
 
 def ready():
@@ -225,21 +244,22 @@ def table(rows, cols, src_col=None):
 with st.sidebar:
     st.markdown("### 🏦 Merger check")
     nav = st.container(key="nav")
-    current = PAGES.index(S["page"]) if S["page"] in PAGES else None
+    ORDER = pages()
+    current = ORDER.index(S["page"]) if S["page"] in ORDER else None
     with nav:
-        for i, p in enumerate(PAGES):
+        for i, p in enumerate(ORDER):
             done = current is not None and i < current
-            label = ("✓  " if done and i > 0 else "") + p
-            st.button(label, key=f"nav_{i}", on_click=go, args=(p,), type="primary" if S["page"] == p else "secondary",
+            label = ("✓  " if done and i > 0 else "") + page_title(p)
+            st.button(label, key=f"nav_{p}", on_click=go, args=(p,), type="primary" if S["page"] == p else "secondary",
                       width="stretch")
-            if i < len(PAGES) - 1:
+            if i < len(ORDER) - 1:
                 if current == i:
                     st.markdown('<div class="arrows">⌄<br>⌄<br>⌄</div>', unsafe_allow_html=True)
                 else:
                     st.markdown('<div class="gap"></div>', unsafe_allow_html=True)
         st.markdown('<div style="height:10px"></div>', unsafe_allow_html=True)
-        st.button("📏  " + EXTRA, key="nav_extra", on_click=go, args=(EXTRA,),
-                  type="primary" if S["page"] == EXTRA else "secondary", width="stretch")
+        st.button("📏  Size examples", key="nav_sizes", on_click=go, args=("sizes",),
+                  type="primary" if S["page"] == "sizes" else "secondary", width="stretch")
     st.divider()
     with st.expander("🔑 API key", expanded=not bool(S.get("api_key"))):
         provider = st.radio("Provider", ["Anthropic (Claude)", "OpenAI"], horizontal=True,
@@ -280,7 +300,7 @@ def show_ai(result, title, key):
         if chk:
             note = (f"cites {len(chk['cited'])} regulation passage(s) — all verified" if chk["has_citations"] and not chk["invalid"]
                     else "⚠️ unverified citations were removed" if chk["invalid"] else "no citations")
-        st.markdown(f'<span class="ai-tag">✨ AI explanation</span> <span class="muted">&nbsp;{title}{" · " + note if note else ""}</span>',
+        st.markdown(f'<span class="ai-tag">✨ Written by AI</span> <span class="muted">&nbsp;{title}{" · " + note if note else ""}</span>',
                     unsafe_allow_html=True)
         st.markdown(result["text"])
         if result.get("passages"):
@@ -328,7 +348,7 @@ def chat_box(page, facts):
 def nav_buttons():
     st.write("")
     st.divider()
-    order = PAGES
+    order = pages()
     if S["page"] not in order:
         return
     i = order.index(S["page"])
@@ -336,60 +356,87 @@ def nav_buttons():
     if i > 0:
         c1.button("←  Back", on_click=go, args=(order[i - 1],), width="stretch", key="back")
     if i < len(order) - 1:
-        c3.button(f"Next: {order[i + 1].split('  ')[-1]}  →", on_click=go, args=(order[i + 1],), type="primary",
-                  width="stretch", key="next", disabled=not ready())
+        nxt = order[i + 1]
+        c3.button(f"Next: {PAGE_NAMES[nxt]}  →", on_click=go, args=(nxt,), type="primary", width="stretch", key="next",
+                  disabled=(not ready()) and nxt not in ("setup",))
 
 
 def need_banks():
-    st.info("First choose the deal on the **Home** page.")
-    st.button("Go to Home", on_click=go, args=("Home",), type="primary")
+    st.info("First choose the two banks on the **Getting started** page.")
+    st.button("Go to Getting started", on_click=go, args=("setup",), type="primary")
 
 
 # --------------------------------------------------------------------------------------
 # Loading banks
 # --------------------------------------------------------------------------------------
-def parse(files):
-    """Accepts the Fed's bulk .txt file and/or individual FR Y-9C PDFs (read exactly from their form fields)."""
-    S.setdefault("files", {}).update(files)
+@st.cache_data(show_spinner=False)
+def _parse_one(name, data):
+    """Read one FR Y-9C file (PDF form or the Fed's bulk .txt). Cached, so re-runs are instant."""
+    return E.parse_y9c_pdf(data) if name.lower().endswith(".pdf") else E.parse_y9c_bulk(data)
+
+
+def _read_test(name):
+    with open(os.path.join(TEST, name), "rb") as fh:
+        return fh.read()
+
+
+def rebuild_banks():
+    """All banks the app knows about: the fictional example banks, the Canadian banks' U.S. arms,
+    and whatever was uploaded for the buyer and for the bank being bought."""
     parsed, skipped = [], []
-    for name, data in S["files"].items():
-        q, banks = E.parse_y9c_pdf(data) if name.lower().endswith(".pdf") else E.parse_y9c_bulk(data)
+    files = [(EXAMPLE_POOL, _read_test(EXAMPLE_POOL))] + [(n, _read_test(n)) for v in US_ARM_FILES.values() for n in v]
+    for slot in ("acq", "tgt"):
+        files += list(S.get(f"files_{slot}", {}).items())
+    for name, data in files:
+        q, banks = _parse_one(name, data)
         (parsed.append((q, banks)) if banks else skipped.append(name))
-    if parsed:
-        S["banks"] = E.merge_quarters(parsed)
+    S["banks"] = E.merge_quarters(parsed)
     S["skipped"] = skipped
-
-
-def add_test_files(names):
-    files = {}
-    for n in names:
-        if n not in S.get("files", {}):
-            with open(os.path.join(TEST, n), "rb") as fh:
-                files[n] = fh.read()
-    if files:
-        parse(files)
 
 
 def ihc_rssd(pk):
     return STRUCTURE[pk]["ihcs"][0]["rssd"] if STRUCTURE[pk]["ihcs"] else None
 
 
-def load_example(kind):
-    S["files"] = {}
+def example_rssds():
+    _, banks = _parse_one(EXAMPLE_POOL, _read_test(EXAMPLE_POOL))
+    return list(banks)
+
+
+def _by_name(fragment):
+    return next((k for k, v in S["banks"].items() if fragment in v["latest"]["name"]), None)
+
+
+EXAMPLE_DEALS = {
+    "U.S. deal that crosses $100bn — Great Lakes Financial buys Prairie Trust": ("us", "GREAT LAKES", "PRAIRIE TRUST", None),
+    "U.S. deal that crosses $250bn — Sun Belt Bancshares buys Atlantic Harbor": ("us", "SUN BELT", "ATLANTIC HARBOR", None),
+    "U.S. deal that crosses $700bn — Pacific Crest Financial buys Cascade Bancorp": ("us", "PACIFIC CREST", "CASCADE", None),
+    "Canadian buyer — RBC buys Liberty Square (Category IV → III)": ("ca", "RBC", "LIBERTY SQUARE", None),
+    "Canadian buyer — CIBC buys Great Lakes Financial (U.S. presence crosses $100bn)": ("ca", "CIBC", "GREAT LAKES", None),
+    "Canadian buyer — TD buys Keystone National (Category II, and fails Reg K)": ("ca", "TD", "KEYSTONE", ILLUSTRATIVE_HOLDINGS),
+}
+
+
+def load_example_deal(label):
+    kind, buyer, target, holdings_file = EXAMPLE_DEALS[label]
+    S["files_acq"], S["files_tgt"] = {}, {}
     S["parent"], S["holdings"] = None, None
     S["saved"].pop("parent_src", None)
-    add_test_files([SMALL_BANKS])
-    by_name = {v["latest"]["name"]: k for k, v in S["banks"].items()}
-    keep("tgt", by_name.get("ASSOCIATED BANC-CORP"))
-    if kind == "canadian":
+    rebuild_banks()
+    keep("tgt", _by_name(target))
+    keep("tgt_source", "Choose an example bank")
+    if kind == "ca":
         keep("canadian", True)
-        keep("parent_key", "RBC")
-        add_test_files(US_ARM_FILES["RBC"])
-        keep("acq", ihc_rssd("RBC"))
+        keep("parent_key", buyer)
+        keep("acq", ihc_rssd(buyer))
+        if buyer in PILLAR3:
+            S["pending_pillar3"] = PILLAR3[buyer][0]
     else:
         keep("canadian", False)
-        keep("tgt", by_name.get("WAFD, INC."))
-        keep("acq", by_name.get("ASSOCIATED BANC-CORP"))
+        keep("acq", _by_name(buyer))
+        keep("acq_source", "Choose an example bank")
+    keep("holdings_text", _read_test(holdings_file).decode() if holdings_file else "")
+    S["auto_holdings"] = bool(holdings_file)
 
 
 def buyer_label():
@@ -437,15 +484,25 @@ def canadian(d):
          "detail": "Confirmed by the user." if q["test1"] == "met" else "Not confirmed.", "src": "12 CFR 211.23(a)(1)"},
         {"status": q["test2"], "check": "Reg K test 2 — more than half its banking is outside the U.S. (after the deal)",
          "detail": "; ".join(f"{l['measure']}: {l['detail']}" for l in q["legs"]), "src": "12 CFR 211.23(a)(2)"}]
+    if q["overall"] == "not_met":
+        regk_rows.append({"status": "not_met", "check": "Reg K exemptions for its businesses outside the U.S.",
+                          "detail": "If it fails for two years in a row, the exemptions end; anything acquired after the first failing year "
+                                    "must be sold or wound down within three months, unless the Fed agrees otherwise.",
+                          "src": "12 CFR 211.23(d)"})
     holdings = list(S.get("holdings") or [])
-    fed_recorded = [dict(h, source="Fed records") for h in G["foreign_nonbank"] + G["foreign_with_us_business"]]
+    fed_recorded = [dict(h, source="Fed records") for h in G.get("foreign_all", [])]
     flags = E.holdings_flags({h["name"]: h for h in fed_recorded + holdings}.values())
     hold_rows = []
     n_flag = sum(1 for f in flags if f["flag"] != "met")
-    hold_rows.append({"status": "review" if n_flag else ("met" if flags else "unknown"),
-                      "check": "Holdings outside the U.S. that depend on Reg K status",
-                      "detail": f"{n_flag} of {len(flags)} reviewed holdings need checking." if flags else
-                      "No holdings list loaded — add the parent's list of subsidiaries in Step 4.", "src": "12 CFR 211.23(f)"})
+    at_risk = q["overall"] == "not_met"
+    if flags:
+        detail = f"{n_flag} of {len(flags)} holdings need checking"
+        detail += (" — and because it fails the Reg K tests, every non-banking holding outside the U.S. is at risk." if at_risk else ".")
+        status = "not_met" if (at_risk and n_flag) else ("review" if n_flag else "met")
+    else:
+        detail, status = (f"The Fed records no foreign holdings for {pk}; add its own list of subsidiaries for a full review.", "review")
+    hold_rows.append({"status": status, "check": "Holdings outside the U.S. that depend on Reg K status", "detail": detail,
+                      "src": "12 CFR 211.23(f)"})
     hold_rows.append({"status": "review" if G["outside_ihc"] else "met", "check": "U.S. companies held outside the IHC",
                       "detail": (", ".join(nice_name(x["name"]) for x in G["outside_ihc"][:3]) + " — confirm an exception applies or move under the IHC.")
                       if G["outside_ihc"] else "None — every U.S. company is under the IHC.", "src": "12 CFR 252.153"})
@@ -457,7 +514,7 @@ def canadian(d):
             osfi_rows.append({"status": r["status"], "check": f"Parent's {r['test']} (OSFI)",
                               "detail": f"{pct(r['before'])} → {pct(r['after'])} vs target {r['target']:.2f}%", "src": r["cite"]})
     else:
-        osfi_rows.append({"status": "unknown", "check": "Parent's capital ratios (OSFI)", "detail": "Load the parent's Pillar 3 report on Home.",
+        osfi_rows.append({"status": "unknown", "check": "Parent's capital ratios (OSFI)", "detail": "Load the parent's Pillar 3 report on Getting started.",
                           "src": "OSFI CAR (2027) Ch.1"})
     return dict(pk=pk, G=G, v=v, fp=fp_, us_rows=us_rows, ihc_before=ihc_before, ihc_after=ihc_after, q=q, regk_rows=regk_rows,
                 flags=flags, hold_rows=hold_rows, osfi_rows=osfi_rows, parent_total_usd=parent_total_usd,
@@ -512,8 +569,8 @@ def read_pillar3(src_bytes, src_name):
     if saved("parent_src") == fp(src_name, len(src_bytes)):
         return
     from pypdf import PdfReader
-    text, pages = ai.find_capital_pages(PdfReader(io.BytesIO(src_bytes)))
-    out = run_ai(fp("extract", src_name, len(src_bytes)), lambda: {"fig": ai.extract_parent_figures("Home", text), "pages": pages},
+    text, page_nums = ai.find_capital_pages(PdfReader(io.BytesIO(src_bytes)))
+    out = run_ai(fp("extract", src_name, len(src_bytes)), lambda: {"fig": ai.extract_parent_figures("Getting started", text), "pages": page_nums},
                  "The AI is reading the report's key-metrics table…")
     if out:
         keep("parent_src", fp(src_name, len(src_bytes)))
@@ -522,111 +579,164 @@ def read_pillar3(src_bytes, src_name):
 
 def page_home():
     st.markdown("# Bank merger regulatory check")
-    st.markdown('<p class="lede">Choose the bank being bought and the buyer. The app shows which U.S. capital rules each one meets, '
-                'what the merger changes — and, if the buyer is a Canadian bank, what U.S. regulation it takes on and what that means '
-                'for the holdings it keeps at home.</p>', unsafe_allow_html=True)
+    st.markdown('<p class="lede">For a proposed bank merger, see which U.S. capital rules each bank meets, what the deal changes — '
+                'and, if the buyer is a Canadian bank, what U.S. regulation it takes on and what that means for the businesses '
+                'it owns at home.</p>', unsafe_allow_html=True)
     st.write("")
-    left, right = st.columns([1.25, 1], gap="large")
+    left, right = st.columns([1.2, 1], gap="large")
     with left:
         st.markdown("### What you'll see")
-        for n, title, body in [(1, "At a glance", "Every requirement — met, not met, newly applies."),
-                               (2, "Capital ratios", "Each bank, and the two combined, against what's required."),
-                               (3, "Leverage & liabilities", "The leverage ratio and the 10% liabilities cap."),
-                               (4, "Canadian buyer", "The U.S. rules it takes on, Reg K, and the holdings to review."),
-                               (5, "Summary & next steps", "A clean table, next steps and a draft memo.")]:
+        steps = [("Getting started", "Choose the two banks — upload their Fed filings or pick an example."),
+                 ("At a glance", "Every requirement — met, not met, newly applies."),
+                 ("Capital ratios", "Each bank, and the two combined, against what each size category needs."),
+                 ("Leverage & liabilities", "The leverage ratio and the 10% liabilities cap."),
+                 ("Canadian buyer", "Only for a Canadian buyer: the U.S. rules it takes on, Reg K, and holdings to review."),
+                 ("Summary & next steps", "A clean table, next steps and a draft memo.")]
+        for n, (title, body) in enumerate(steps, 1):
             st.markdown(f'<div class="step-preview"><div class="num">{n}</div><div><b style="font-size:17.5px">{title}</b><br>'
                         f'<span class="muted" style="font-size:15.5px">{body}</span></div></div>', unsafe_allow_html=True)
-        st.write("")
+    with right:
         st.markdown("### How it works")
-        st.markdown('<div class="howto"><div class="ic">🧮</div><div><b>The numbers are calculated</b>'
-                    '<span>Every figure and every met / not met result follows fixed rules taken from the regulations — '
-                    'the same answer every time.</span></div></div>'
+        st.markdown('<div class="howto"><div class="ic">📖</div><div><b>The rules are built into the app</b>'
+                    '<span>Every threshold and ratio — the $100bn, $250bn and $700bn lines, the 4.5% CET1 minimum, the 10% '
+                    'liabilities cap, the Reg K tests — is written into the app from the regulation itself, with the section '
+                    'cited beside it. Nothing is looked up or guessed at the time you run it.</span></div></div>'
+                    '<div class="howto"><div class="ic">🧮</div><div><b>The numbers are calculated without AI</b>'
+                    '<span>Every figure and every met / not met result follows those fixed rules — the same answer every time.</span></div></div>'
                     '<div class="howto"><div class="ic">✨</div><div><b>The explanations are written by AI</b>'
                     '<span>Using only the regulations loaded into the app, with the sources shown so you can check them.</span></div></div>',
                     unsafe_allow_html=True)
-    with right:
-        st.markdown("### Choose the deal")
-        with st.popover("Upload the banks' FR Y-9C reports", width="stretch"):
-            st.markdown("From the Fed's [National Information Center](https://www.ffiec.gov/npw): search the bank → "
-                        "**Financial Reports** → **FR Y-9C** (PDF), or the bulk **Financial Data Download** (.txt). Up to four quarters.")
-            files = st.file_uploader("FR Y-9C files", type=["txt", "pdf"], accept_multiple_files=True, label_visibility="collapsed")
-            if files:
-                parse({f.name: f.getvalue() for f in files})
-                if S.get("skipped"):
-                    st.warning("Not an FR Y-9C report, so skipped: " + ", ".join(S["skipped"]))
-        c0, c1, c2 = st.columns([1.05, 1.15, 0.8], gap="small")
-        c0.markdown('<div class="muted" style="padding-top:6px">Or try an example:</div>', unsafe_allow_html=True)
-        if c1.button("Canadian buyer", type="tertiary", help="RBC buying Associated Banc-Corp."):
-            load_example("canadian")
-        if c2.button("U.S. buyer", type="tertiary", help="Associated Banc-Corp buying WaFd."):
-            load_example("us")
-        if not S.get("banks"):
-            st.markdown('<span class="muted">Upload the two banks\' reports, or try an example.</span>', unsafe_allow_html=True)
-            return
-        B = S["banks"]
-        arm_ids = {ihc_rssd(k) for k in CANADIAN}
-        targets = sorted([k for k in B if k not in arm_ids], key=lambda k: -B[k]["latest"]["total_assets"])
-        lab = lambda k: f"{nice_name(B[k]['latest']['name'])}  ·  {E.bn(B[k]['latest']['total_assets'])}"
-        if not targets:
-            st.warning("Upload at least one U.S. bank to be bought.")
-            return
-        tgt = st.selectbox("Bank being bought (U.S.)", targets, format_func=lab,
-                           index=targets.index(saved("tgt")) if saved("tgt") in targets else 0)
-        keep("tgt", tgt)
-        is_can = st.checkbox("The buyer is a Canadian bank", value=saved("canadian", False),
-                             help="TD, RBC, BMO or CIBC buying a U.S. bank to grow its U.S. presence.")
+        st.markdown('<div class="card" style="background:#f7f9fc;margin-top:6px"><b>Why build the rules in?</b><br>'
+                    '<span class="muted" style="font-size:15.5px">An AI asked to "apply the capital rules" can misremember a '
+                    'threshold or a percentage. Here, the rules are fixed and every one carries its citation — '
+                    '<b>so you only have to double-check the work, not triple-check it.</b></span></div>', unsafe_allow_html=True)
+        st.write("")
+        st.button("Get started  →", type="primary", on_click=go, args=("setup",), width="stretch")
+
+
+def bank_picker(slot, label, exclude=()):
+    """One bank: either an example bank or the user's own FR Y-9C upload (PDF or the Fed's bulk .txt)."""
+    st.markdown(f"#### {label}")
+    src = st.radio("Source", ["Upload its FR Y-9C", "Choose an example bank"], horizontal=True, label_visibility="collapsed",
+                   index=["Upload its FR Y-9C", "Choose an example bank"].index(saved(f"{slot}_source", "Upload its FR Y-9C")),
+                   key=f"src_{slot}")
+    keep(f"{slot}_source", src)
+    B = S["banks"]
+    lab = lambda k: f"{nice_name(B[k]['latest']['name'])}  ·  {E.bn(B[k]['latest']['total_assets'])}"
+    if src == "Choose an example bank":
+        options = [k for k in sorted(example_rssds(), key=lambda k: -B[k]["latest"]["total_assets"]) if k not in exclude]
+        st.markdown('<span class="muted">Fictional banks, sized just below the category lines so deals cross them.</span>',
+                    unsafe_allow_html=True)
+    else:
+        files = st.file_uploader("FR Y-9C (PDF from the Fed's National Information Center, or the bulk .txt) — up to four quarters",
+                                 type=["pdf", "txt"], accept_multiple_files=True, key=f"upload_{slot}")
+        if files:
+            new = {f.name: f.getvalue() for f in files}
+            if new != S.get(f"files_{slot}"):
+                S[f"files_{slot}"] = new
+                rebuild_banks()
+                B = S["banks"]
+        uploaded = set()
+        for name, data in S.get(f"files_{slot}", {}).items():
+            uploaded |= set(_parse_one(name, data)[1])
+        options = [k for k in sorted(uploaded, key=lambda k: -B[k]["latest"]["total_assets"]) if k not in exclude]
+        if S.get("skipped"):
+            st.warning("Not an FR Y-9C report, so skipped: " + ", ".join(n for n in S["skipped"] if n in S.get(f"files_{slot}", {})))
+        if not options:
+            st.markdown('<span class="muted">Search the bank at [ffiec.gov/npw](https://www.ffiec.gov/npw) → Financial Reports → FR Y-9C.</span>',
+                        unsafe_allow_html=True)
+            return None
+    if len(options) == 1:
+        keep(slot, options[0])
+        b = B[options[0]]
+        st.markdown(f"**{nice_name(b['latest']['name'])}** · {E.bn(b['latest']['total_assets'])} · "
+                    f"{b['quarters']} quarter(s)")
+        return options[0]
+    pick = st.selectbox(label, options, format_func=lab, label_visibility="collapsed", key=f"pick_{slot}_{src}",
+                        index=options.index(saved(slot)) if saved(slot) in options else 0)
+    keep(slot, pick)
+    return pick
+
+
+def page_setup():
+    header("setup")
+    if "banks" not in S:
+        rebuild_banks()
+    st.markdown('<p class="lede">Choose the buyer and the bank being bought. Upload each one\'s FR Y-9C report from the Federal '
+                'Reserve, or pick an example bank.</p>', unsafe_allow_html=True)
+    with st.expander("Or load a ready-made example deal"):
+        c1, c2 = st.columns([3, 1])
+        choice = c1.selectbox("Example deal", list(EXAMPLE_DEALS), label_visibility="collapsed")
+        if c2.button("Load", type="primary", width="stretch"):
+            load_example_deal(choice)
+            st.rerun()
+
+    is_can = st.checkbox("The buyer is a Canadian bank (TD, RBC, BMO or CIBC)", value=saved("canadian", False))
+    if is_can != saved("canadian", False):
         keep("canadian", is_can)
+        st.rerun()
+    left, right = st.columns(2, gap="large")
+    arm_ids = {ihc_rssd(k) for k in CANADIAN}
+    with left:
         if is_can:
-            with st.container(border=True):
-                pk = st.selectbox("Which Canadian bank?", CANADIAN, format_func=lambda k: f"{nice_name(STRUCTURE[k]['parent'])} ({k})",
-                                  index=CANADIAN.index(saved("parent_key")) if saved("parent_key") in CANADIAN else 0)
-                if pk != saved("parent_key"):
-                    S["parent"], S["holdings"] = None, None
-                    S["saved"].pop("parent_src", None)
-                keep("parent_key", pk)
-                add_test_files(US_ARM_FILES.get(pk, []))
-                keep("acq", ihc_rssd(pk))
-                st.markdown(f'Its U.S. arm: <b>{nice_name(STRUCTURE[pk]["ihcs"][0]["name"])}</b> '
-                            f'({E.bn(S["banks"][ihc_rssd(pk)]["latest"]["total_assets"])}, FR Y-9C).', unsafe_allow_html=True)
-                st.markdown("**Its Pillar 3 report** (for its Canadian capital ratios)")
-                c1, c2 = st.columns([1, 1.4])
-                if pk in PILLAR3 and c1.button("Use example", width="stretch", help=PILLAR3[pk][1]):
-                    with open(os.path.join(TEST, PILLAR3[pk][0]), "rb") as fh:
-                        read_pillar3(fh.read(), PILLAR3[pk][0])
-                pdf = c2.file_uploader("Pillar 3 PDF", type=["pdf"], label_visibility="collapsed", key="p3_upload")
-                if pdf is not None:
-                    read_pillar3(pdf.getvalue(), pdf.name)
-                v = parent_values()
-                if v:
-                    chk = ai.verify_parent(S["parent"]["fig"])
-                    ok = all(c["ok"] for c in chk if c["ok"] is not None) and any(c["ok"] for c in chk)
-                    verdict = "✓ double-checked against the bank's own ratios" if ok else "? some figures missing — check them in Step 4"
-                    st.markdown(f'<span class="ai-tag">✨ Read by AI</span>&nbsp; {v.get("period") or "Latest quarter"}: CET1 '
-                                f'C${(v.get("cet1") or 0):,.0f}m, total assets C${(v.get("total_assets") or 0):,.0f}m · '
-                                f'<span class="code-tag">{verdict}</span>', unsafe_allow_html=True)
+            st.markdown("#### Buyer (Canadian bank)")
+            pk = st.selectbox("Canadian bank", CANADIAN, format_func=lambda k: f"{nice_name(STRUCTURE[k]['parent'])} ({k})",
+                              index=CANADIAN.index(saved("parent_key")) if saved("parent_key") in CANADIAN else 0,
+                              label_visibility="collapsed")
+            if pk != saved("parent_key"):
+                S["parent"], S["holdings"] = None, None
+                S["saved"].pop("parent_src", None)
+            keep("parent_key", pk)
+            keep("acq", ihc_rssd(pk))
+            arm = S["banks"][ihc_rssd(pk)]
+            st.markdown(f'Its U.S. arm: **{nice_name(arm["latest"]["name"])}** · {E.bn(arm["latest"]["total_assets"])} '
+                        f'<span class="muted">(FR Y-9C, built into the app)</span>', unsafe_allow_html=True)
+            st.markdown("**Its Pillar 3 report** — for its Canadian capital and total assets")
+            c1, c2 = st.columns([1, 1.4])
+            if S.get("pending_pillar3"):
+                name = S.pop("pending_pillar3")
+                read_pillar3(_read_test(name), name)
+            if pk in PILLAR3 and c1.button("Use example", width="stretch", help=PILLAR3[pk][1]):
+                read_pillar3(_read_test(PILLAR3[pk][0]), PILLAR3[pk][0])
+            pdf = c2.file_uploader("Pillar 3 PDF", type=["pdf"], label_visibility="collapsed", key="p3_upload")
+            if pdf is not None:
+                read_pillar3(pdf.getvalue(), pdf.name)
+            v = parent_values()
+            if v:
+                chk = ai.verify_parent(S["parent"]["fig"])
+                ok = all(c["ok"] is True for c in chk)
+                verdict = ("✓ double-checked against the bank's own ratios" if ok else
+                           "? some figures are missing or don't match — check them on the Canadian buyer page")
+                money = lambda x: f"C${x:,.0f}m" if x else "not found"
+                st.markdown(f'<span class="ai-tag">✨ Read by AI</span>&nbsp; {v.get("period") or "Latest quarter"}: CET1 '
+                            f'{money(v.get("cet1"))}, total assets {money(v.get("total_assets"))} · '
+                            f'<span class="code-tag">{verdict}</span>', unsafe_allow_html=True)
         else:
-            buyers = [k for k in targets if k != tgt] or targets
-            acq = st.selectbox("Buyer (U.S.)", buyers, format_func=lab, index=buyers.index(saved("acq")) if saved("acq") in buyers else 0)
-            keep("acq", acq)
+            bank_picker("acq", "Buyer", exclude=arm_ids | {saved("tgt")})
             keep("gsib", st.checkbox("The buyer is a U.S. GSIB", value=saved("gsib", False)))
-        if ready():
-            st.write("")
-            st.button("Get started  →", type="primary", on_click=go, args=(PAGES[1],), width="stretch")
+    with right:
+        bank_picker("tgt", "Bank being bought (U.S.)", exclude=arm_ids | ({saved("acq")} if not is_can else set()))
+
     if ready():
         d = deal()
+        st.write("")
+        st.markdown(f'<div class="card" style="background:#f7f9fc"><b>{nice_name(d["a"]["name"])}</b> '
+                    f'{"(" + saved("parent_key") + "\'s U.S. arm) " if is_can else ""}buying <b>{nice_name(d["t"]["name"])}</b> · '
+                    f'combined {E.bn(d["pf_avg"])} · {E.cat_label(d["cat_a"][0])} → <b>{E.cat_label(d["cat_c"][0])}</b></div>',
+                    unsafe_allow_html=True)
         st.write("")
         with st.expander("AI's first read of the two banks' figures"):
             for b in (d["a"], d["t"]):
                 figs = "\n".join(f"- {E.FIELDS[k][1]}: {pct(b[k]) if k in E.RATIO_FIELDS else E.bn(b[k], 2)}" for k in E.FIELDS)
                 checks = "\n".join(f"- {c['check']}: {c['result']}" for c in E.cross_checks(b))
-                res = run_ai(fp("review", b["rssd"], b["quarter"]), lambda: {"text": ai.review_bank("Home", b["name"], figs, checks)},
+                res = run_ai(fp("review", b["rssd"], b["quarter"]), lambda: {"text": ai.review_bank("Getting started", b["name"], figs, checks)},
                              f"Reading {nice_name(b['name'])}…")
                 st.markdown(f"**{nice_name(b['name'])}**")
                 show_ai(res, "figures only — no law", f"review_{b['rssd']}")
 
 
 def page_glance():
-    st.markdown("## 1 · At a glance")
+    header("glance")
     if not ready():
         return need_banks()
     d = deal()
@@ -653,7 +763,7 @@ def ratio_cell(value, status):
 
 
 def page_capital():
-    st.markdown("## 2 · Capital ratios")
+    header("capital")
     if not ready():
         return need_banks()
     d = deal()
@@ -671,8 +781,59 @@ def page_capital():
                 f'Source: 12 CFR 217.10(a) (minimums), 217.11(a) (buffer). For Category IV and above, the buffer is the bank\'s '
                 f'stress capital buffer, which is at least 2.5% (12 CFR 225.8).</span>', unsafe_allow_html=True)
 
+    # ---- what the ratios mean (optional, written by AI on request) ----
+    st.markdown("### What these ratios mean")
+    explain_key = fp("ratios-explained")
+    if explain_key in S["ai_cache"]:
+        show_ai(S["ai_cache"][explain_key], "Plain-English guide to the capital ratios", "ratios_explained")
+    else:
+        st.markdown('<span class="muted">Not needed if you work with bank capital rules every day. Otherwise, AI can write a short '
+                    'plain-English guide to each ratio, drawn only from the regulations in the app.</span>', unsafe_allow_html=True)
+        if st.button("✨ Explain these ratios in plain English"):
+            facts_now = "\n".join(f"{name}: buyer {pct(d['a'][k])}, bank bought {pct(d['t'][k])}, combined {pct(d['c'][k])}; "
+                                  f"minimum {m}%, with buffer {m + E.BUFFER}%" for k, name, m in E.CAPITAL_RATIOS)
+            res = run_ai(explain_key, lambda: ai.explain_multi(
+                "2 Capital ratios", "Write a short plain-English guide for a transactional lawyer. Use a bold heading for each of: "
+                "Risk-weighted assets; CET1 capital and the CET1 ratio; Tier 1 capital (including additional Tier 1); Total capital "
+                "(including Tier 2); The buffers on top of the minimums (conservation buffer, stress capital buffer, countercyclical "
+                "buffer, GSIB surcharge); What happens below the buffer or the minimum. Under each, two or three short sentences: first "
+                "what it is in everyday words, drawn from the passages, then one sentence tying it to this deal's figures in APP FACTS. "
+                "Cite passages. No preamble.",
+                facts_now,
+                [("section", "12 CFR 217.2", "Standardized total risk-weighted assets means"),
+                 ("section", "12 CFR 217.20", "Common equity tier 1 capital is the sum"),
+                 ("section", "12 CFR 217.20", "Additional tier 1 capital is the sum"),
+                 ("section", "12 CFR 217.20", "Tier 2 capital is the sum"),
+                 ("section", "12 CFR 217.10", "minimum capital requirements"),
+                 ("section", "12 CFR 217.11", "maximum payout ratio"),
+                 ("section", "12 CFR 217.11", "Stress capital buffer requirement"),
+                 ("section", "12 CFR 217.11", "must calculate a countercyclical capital buffer amount"),
+                 ("section", "12 CFR 217.403", "surcharge")], LIB),
+                "Writing the guide…")
+            if res:
+                st.rerun()
+
+    # ---- what each size category must hold ----
+    st.markdown("### What each size category must hold")
+    st.markdown('<p class="lede">The minimums are the same for every bank. What grows with size is the buffer on top — and '
+                'below the buffer, dividends and bonuses are restricted.</p>', unsafe_allow_html=True)
+    here = {}
+    here.setdefault(d["cat_a"][0], []).append("buyer today")
+    here.setdefault(d["cat_c"][0], []).append("after the deal")
+    crow = []
+    for cat, who, c1, t1, tot, buffer, src in E.CATEGORY_CAPITAL:
+        label = f"<b>{'Below $100bn' if cat == 'None' else 'Category ' + cat}</b>"
+        if cat in here:
+            label += "<br>" + " ".join(f'<span class="pill" style="background:#1f3a931a;color:#1f3a93">{x}</span>' for x in here[cat])
+        crow.append({"Size category": label, "Who": who if cat != "None" else "No category",
+                     "CET1": c1, "Tier 1": t1, "Total capital": tot, "The buffer on top of the minimum": buffer, "Source": src})
+    table(crow, ["Size category", "Who", "CET1", "Tier 1", "Total capital", "The buffer on top of the minimum", "Source"], src_col="Source")
+    st.markdown('<span class="muted">Minimums for every bank: CET1 4.5%, Tier 1 6%, Total capital 8% (12 CFR 217.10(a)). '
+                'Figures shown are minimum plus the lowest possible buffer; a bank\'s actual stress capital buffer, '
+                'countercyclical buffer and GSIB surcharge are set by the Fed and can be higher.</span>', unsafe_allow_html=True)
+
     with st.expander("Where these numbers come from"):
-        st.markdown('<span class="code-tag">✓ Calculated</span>&nbsp; Read straight from the Fed filings and double-checked.', unsafe_allow_html=True)
+        st.markdown('<span class="code-tag">✓ Calculated without AI</span>&nbsp; Read straight from the Fed filings and double-checked.', unsafe_allow_html=True)
         frows = []
         for k in ("cet1", "tier1", "total_capital", "rwa"):
             codes, lbl, loc = E.FIELDS[k]
@@ -694,7 +855,7 @@ def page_capital():
 
 
 def page_leverage():
-    st.markdown("## 3 · Leverage & liabilities")
+    header("leverage")
     if not ready():
         return need_banks()
     d = deal()
@@ -738,13 +899,13 @@ def page_leverage():
 
 
 def page_canadian():
-    st.markdown("## 4 · Canadian buyer")
+    header("canadian")
     if not ready():
         return need_banks()
     if not saved("canadian"):
         st.markdown('<p class="lede">This step is for a Canadian bank buying a U.S. bank. Tick <b>"The buyer is a Canadian bank"</b> '
-                    'on the Home page to use it.</p>', unsafe_allow_html=True)
-        st.button("Go to Home", on_click=go, args=("Home",))
+                    'on the Getting started page to use it.</p>', unsafe_allow_html=True)
+        st.button("Go to Getting started", on_click=go, args=("setup",))
         return
     d = deal()
     cx = canadian(d)
@@ -799,8 +960,10 @@ def page_canadian():
             "Result": pill({True: "met", False: "not_met", None: "unknown"}[l["pass"]]), "Detail": l["detail"]} for l in q["legs"]],
           ["Measure", "Share in the U.S.", "Result", "Detail"])
     st.markdown(f"**Overall: {pill(q['overall'])}** &nbsp; Test 1 {pill(q['test1'])} &nbsp; Test 2 {pill(q['test2'])}"
-                + (f" &nbsp; · &nbsp; Room for more U.S. banking assets before the assets measure fails: <b>{E.bn(q['headroom'])}</b>"
-                   if q["headroom"] else ""), unsafe_allow_html=True)
+                + ((f" &nbsp; · &nbsp; Room for more U.S. banking assets before the assets measure fails: <b>{E.bn(q['headroom'])}</b>"
+                    if q["headroom"] > 0 else
+                    f" &nbsp; · &nbsp; U.S. banking assets are already <b>{E.bn(-q['headroom'])}</b> past the point where the assets measure fails")
+                   if q["headroom"] is not None else ""), unsafe_allow_html=True)
     st.markdown('<span class="muted">Each test needs 2 of 3 measures. Assets come from the Pillar 3 report and FR Y-9Cs (U.S. assets include '
                 'branches entered above); Puerto Rico, Guam and other territories count as the U.S. The parent\'s total assets are used as '
                 '"outside the U.S." after removing U.S. assets — a simplification. Source: 12 CFR 211.23(a)–(b).</span>', unsafe_allow_html=True)
@@ -816,14 +979,16 @@ def page_canadian():
                     "text). AI sorts each company by type of business; the app then applies the Reg K rules to each one.", unsafe_allow_html=True)
         c1, c2 = st.columns(2)
         hpdf = c1.file_uploader("Annual report or subsidiaries list (PDF)", type=["pdf"], key="holdings_pdf")
-        htxt = c2.text_area("…or paste the list", height=110, key="holdings_txt", placeholder="Company name — country — business")
-        if st.button("Review these holdings", type="primary"):
+        htxt = c2.text_area("…or paste the list", value=saved("holdings_text", ""), height=110, key="holdings_txt",
+                            placeholder="Company name — country — business")
+        auto = S.pop("auto_holdings", False) and bool(htxt.strip()) and not S.get("holdings")
+        if st.button("Review these holdings", type="primary") or auto:
             if not (hpdf or htxt.strip()):
                 st.warning("Upload a PDF or paste a list first.")
                 st.stop()
             if hpdf is not None:
                 from pypdf import PdfReader
-                text, pages = ai.find_subsidiary_pages(PdfReader(io.BytesIO(hpdf.getvalue())))
+                text, _pg = ai.find_subsidiary_pages(PdfReader(io.BytesIO(hpdf.getvalue())))
             else:
                 text = htxt
             res = run_ai(fp("holdings", cx["pk"], text[:2000], len(text)),
@@ -868,7 +1033,7 @@ def page_canadian():
         edited = st.data_editor(edit, hide_index=True, width="stretch", disabled=["Figure", "Where the AI found it"], key="parent_editor")
         for k, val in zip(keys, edited["C$ millions / %"]):
             fig[k]["value"] = None if pd.isna(val) else float(val)
-        st.markdown('<span class="code-tag">✓ Double-check</span>&nbsp; ' + " · ".join(
+        st.markdown('<span class="code-tag">✓ Checked without AI</span>&nbsp; ' + " · ".join(
             f"{'✓' if c['ok'] else '?' if c['ok'] is None else '✕'} {c['check']} ({c['result']})" for c in ai.verify_parent(fig)),
             unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
@@ -905,6 +1070,7 @@ NEXT_STEPS = {
     "Liquidity stress tests": "Build U.S. liquidity stress testing and hold a U.S. liquidity buffer (12 CFR 252.157).",
     "Capital stress testing": "Prepare for capital stress testing of the U.S. operations (12 CFR 252.158).",
     "Certify the parent": "Prepare the certification that the parent meets Basel-consistent home capital standards (12 CFR 252.154).",
+    "Reg K exemptions": "Before signing, map which non-banking holdings outside the U.S. rely on the exemptions, and consider asking the Fed for a specific determination of eligibility (12 CFR 211.23(e)) or restructuring the deal.",
     "Reg K test": "Confirm the Reg K tests with revenue and net income from the annual report; consider asking the Fed for a specific determination (12 CFR 211.23(e)).",
     "Holdings outside the U.S.": "Review each flagged holding outside the U.S. against Reg K (12 CFR 211.23(f)).",
     "Parent's capital ratios": "Load the parent's Pillar 3 report to check its OSFI ratios.",
@@ -913,7 +1079,7 @@ NEXT_STEPS = {
 
 
 def page_summary():
-    st.markdown("## 5 · Summary & next steps")
+    header("summary")
     if not ready():
         return need_banks()
     d = deal()
@@ -998,7 +1164,7 @@ def make_docx(d, rows, memo, steps):
 
 
 def page_sizes():
-    st.markdown("## Size examples")
+    header("sizes")
     st.markdown('<p class="lede">Which category a merger lands in depends mainly on the combined bank\'s average total assets. '
                 'These made-up pairs show each step of the ladder.</p>', unsafe_allow_html=True)
     examples = [
@@ -1027,7 +1193,9 @@ def page_sizes():
 
 
 # ======================================================================================
-{"Home": page_home, PAGES[1]: page_glance, PAGES[2]: page_capital, PAGES[3]: page_leverage, PAGES[4]: page_canadian,
- PAGES[5]: page_summary, EXTRA: page_sizes}[S["page"]]()
+if S["page"] == "canadian" and not saved("canadian"):
+    S["page"] = "summary"
+{"home": page_home, "setup": page_setup, "glance": page_glance, "capital": page_capital, "leverage": page_leverage,
+ "canadian": page_canadian, "summary": page_summary, "sizes": page_sizes}[S["page"]]()
 nav_buttons()
 counter.markdown(f'<span class="muted">AI calls this session: <b>{S.get("ai_calls", 0)}</b></span>', unsafe_allow_html=True)
